@@ -1,7 +1,33 @@
 const { ipcRenderer } = require('electron');
 
 window.addEventListener('DOMContentLoaded', () => {
-  // 1. 拦截本地文件与测试按钮
+  async function wipeAllVisibleRows(excludeBtn) {
+    const rawConfirm = window.confirm;
+    window.confirm = () => true;
+    let safetyCount = 0;
+    while (safetyCount < 3000) {
+      const delBtns = Array.from(document.querySelectorAll('table button, tbody button, [title*="删除"], [aria-label*="删除"]'))
+        .filter(b => b !== excludeBtn && !b.closest('#electron-float-left') && !b.closest('#electron-float-right') && (
+          (b.title && b.title.includes('删')) ||
+          (b.innerText && b.innerText.includes('删')) ||
+          (b.innerHTML && (b.innerHTML.includes('trash') || b.innerHTML.includes('M3 6h18') || b.innerHTML.includes('M19 7l') || b.innerHTML.includes('polyline')))
+        ));
+      if (delBtns.length === 0) break;
+      delBtns[0].click();
+      safetyCount++;
+      await new Promise(r => setTimeout(r, 15));
+    }
+    window.confirm = rawConfirm;
+  }
+
+  if (sessionStorage.getItem('__wipe_seed_after_reload') === '1') {
+    sessionStorage.removeItem('__wipe_seed_after_reload');
+    setTimeout(async () => {
+      await wipeAllVisibleRows(null);
+      alert('✅ 已彻底清空全部数据（含默认演示条目），当前为 0 条纯空白看板！');
+    }, 400);
+  }
+
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('#btnTestLocalOpen');
     if (btn) {
@@ -17,8 +43,6 @@ window.addEventListener('DOMContentLoaded', () => {
       ipcRenderer.send('open-local-path', decodeURIComponent(link.href));
     }
   }, true);
-
-  // 2. 右下角悬浮栏：打开数据目录 + 自定义目录
   if (!document.getElementById('electron-float-right')) {
     const barRight = document.createElement('div');
     barRight.id = 'electron-float-right';
@@ -55,7 +79,6 @@ window.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(barRight);
   }
 
-  // 3. 左下角独立悬浮栏：一键清空数据（连续五次确认 + 锁定防回写 + 立刻重载页面）
   if (!document.getElementById('electron-float-left')) {
     const barLeft = document.createElement('div');
     barLeft.id = 'electron-float-left';
@@ -79,18 +102,16 @@ window.addEventListener('DOMContentLoaded', () => {
         '【第 1 / 5 次确认】\n确定要清空软件内的所有追番数据和本地缓存吗？',
         '【第 2 / 5 次确认】\n警告：清空后所有未导出的记录将无法恢复！是否继续？',
         '【第 3 / 5 次确认】\n再次提醒：请确保你已经提前导出了 JSON 备份文件！确定继续清空吗？',
-        '【第 4 / 5 次确认】\n即将抹除所有 LocalStorage 和 IndexedDB 数据库，真的确定吗？',
-        '【第 5 / 5 次最终确认】\n最后一次确认：点击「确定」将立刻彻底清空全部数据并重载界面！'
+        '【第 4 / 5 次确认】\n即将彻底抹除全部记录（含内置默认示例条目），真的确定吗？',
+        '【第 5 / 5 次最终确认】\n最后一次确认：点击「确定」将立刻彻底清空并变成 0 条纯空白看板！'
       ];
       for (let i = 0; i < warnings.length; i++) {
-        if (!confirm(warnings[i])) {
-          return;
-        }
+        if (!confirm(warnings[i])) return;
       }
 
-      // 彻底清空底层存储
+      await wipeAllVisibleRows(btnClear);
+
       localStorage.clear();
-      sessionStorage.clear();
       if (window.indexedDB && indexedDB.databases) {
         const dbs = await indexedDB.databases();
         for (const db of dbs) {
@@ -98,10 +119,8 @@ window.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // 临时锁死写入接口，防止网页在刷新瞬间把内存里的旧数据重新写回硬盘
+      sessionStorage.setItem('__wipe_seed_after_reload', '1');
       Storage.prototype.setItem = function() {};
-
-      // 立刻刷新重载页面
       location.reload();
     };
 
