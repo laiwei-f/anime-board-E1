@@ -55,7 +55,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(barRight);
   }
 
-  // 3. 左下角独立悬浮栏：一键清空数据（连续五次确认防误触）
+  // 3. 左下角独立悬浮栏：一键清空数据（连续五次确认 + 锁定防回写 + 立刻重载页面）
   if (!document.getElementById('electron-float-left')) {
     const barLeft = document.createElement('div');
     barLeft.id = 'electron-float-left';
@@ -80,7 +80,7 @@ window.addEventListener('DOMContentLoaded', () => {
         '【第 2 / 5 次确认】\n警告：清空后所有未导出的记录将无法恢复！是否继续？',
         '【第 3 / 5 次确认】\n再次提醒：请确保你已经提前导出了 JSON 备份文件！确定继续清空吗？',
         '【第 4 / 5 次确认】\n即将抹除所有 LocalStorage 和 IndexedDB 数据库，真的确定吗？',
-        '【第 5 / 5 次最终确认】\n最后一次确认：点击「确定」将立刻彻底清空全部数据！'
+        '【第 5 / 5 次最终确认】\n最后一次确认：点击「确定」将立刻彻底清空全部数据并重载界面！'
       ];
       for (let i = 0; i < warnings.length; i++) {
         if (!confirm(warnings[i])) {
@@ -88,6 +88,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
       }
 
+      // 彻底清空底层存储
       localStorage.clear();
       sessionStorage.clear();
       if (window.indexedDB && indexedDB.databases) {
@@ -96,7 +97,12 @@ window.addEventListener('DOMContentLoaded', () => {
           if (db.name) indexedDB.deleteDatabase(db.name);
         }
       }
-      alert('✅ 全部本地缓存与数据库已彻底清空！\n（提示：请勿直接刷新页面，直接点击页面上的「导入备份」即可导入你的 JSON 数据）');
+
+      // 临时锁死写入接口，防止网页在刷新瞬间把内存里的旧数据重新写回硬盘
+      Storage.prototype.setItem = function() {};
+
+      // 立刻刷新重载页面
+      location.reload();
     };
 
     barLeft.appendChild(btnClear);
