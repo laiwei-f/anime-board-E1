@@ -13,8 +13,14 @@
   "build": {
     "appId": "com.animeshelf.pro",
     "productName": "追番养肥看板Pro",
+    "compression": "maximum",
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
     "win": {
-      "target": "portable"
+      "target": "portable",
+      "icon": "build/icon.png"
     }
   }
 }
