@@ -1,11 +1,35 @@
 const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
+
+function getExeDir() {
+  return process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe'));
+}
+
+function getCustomDataDir() {
+  const exeDir = getExeDir();
+  const configFile = path.join(exeDir, 'data_path.txt');
+  try {
+    if (fs.existsSync(configFile)) {
+      const customPath = fs.readFileSync(configFile, 'utf-8').trim();
+      if (customPath) return customPath;
+    }
+  } catch (e) {}
+  return path.join(exeDir, 'Data');
+}
+
+const targetDataDir = getCustomDataDir();
+if (!fs.existsSync(targetDataDir)) {
+  fs.mkdirSync(targetDataDir, { recursive: true });
+}
+app.setPath('userData', targetDataDir);
 
 function createWindow() {
   const win = new BrowserWindow({
     width: 1360,
     height: 860,
     title: '追番养肥看板 Pro',
+    icon: path.join(__dirname, 'build/icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -14,10 +38,8 @@ function createWindow() {
     }
   });
 
-  // 直接加载你上传的 HTML 文件
   win.loadFile('追番养肥看板_优化版11.html');
 
-  // 拦截网页里触发的外部协议（如 animeshelf: 或 file:）
   win.webContents.on('will-navigate', (event, url) => {
     if (!url.startsWith('file://') || !url.endsWith('.html')) {
       event.preventDefault();
@@ -31,7 +53,6 @@ function createWindow() {
   });
 }
 
-// 解析 animeshelf: 协议或本地路径并直接调用 Windows 默认程序
 function handleCustomOpen(rawUrl) {
   try {
     if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
@@ -39,7 +60,6 @@ function handleCustomOpen(rawUrl) {
       return;
     }
     let decoded = decodeURIComponent(rawUrl);
-    // 尝试提取 Windows 盘符路径（例如 C:\... 或 D:/...）
     const winPathMatch = decoded.match(/([a-zA-Z]:[\\\/][^"'&?]+)/);
     if (winPathMatch) {
       const targetPath = winPathMatch[1].replace(/\//g, '\\');
@@ -52,7 +72,32 @@ function handleCustomOpen(rawUrl) {
 
 ipcMain.on('open-local-path', (event, targetPath) => {
   if (targetPath) {
-    shell.openPath(targetPath.replace(/\//g, '\\'));
+    const winPathMatch = targetPath.match(/([a-zA-Z]:[\\\/][^"'&?]+)/);
+    const finalPath = winPathMatch ? winPathMatch[1] : targetPath;
+    shell.openPath(finalPath.replace(/\//g, '\\'));
+  }
+});
+
+ipcMain.on('open-data-folder', () => {
+  const dir = getCustomDataDir();
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  shell.openPath(dir);
+});
+
+ipcMain.handle('get-current-data-path', () => {
+  return getCustomDataDir();
+});
+
+ipcMain.handle('set-custom-data-path', (event, newPath) => {
+  const trimmed = (newPath || '').trim();
+  if (!trimmed) return { ok: false, msg: '路径不能为空' };
+  try {
+    const configFile = path.join(getExeDir(), 'data_path.txt');
+    fs.writeFileSync(configFile, trimmed, 'utf-8');
+    if (!fs.existsSync(trimmed)) fs.mkdirSync(trimmed, { recursive: true });
+    return { ok: true, msg: '保存成功，关闭并重启软件后生效' };
+  } catch (e) {
+    return { ok: false, msg: '保存失败: ' + e.message };
   }
 });
 
